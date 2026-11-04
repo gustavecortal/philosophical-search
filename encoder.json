@@ -1,0 +1,16 @@
+{
+  "repo": "jinaai/jina-embeddings-v5-text-nano-retrieval",
+  "revision": "ac5d898c8d382b17167c33e5c8af644a3519b47d",
+  "files": {
+    "tokenizer.json": "98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069",
+    "tokenizer_config.json": "6c4640d432db970b2436a4386d3ee992b99e756b62c37446c3f581c8d09cbb05",
+    "onnx/model_q4.onnx": "a44811eb61f90bfcc24720c04e774ce9f5dc1d1539fe32a814aa40b16efbaa1f",
+    "onnx/model_q4.onnx_data": "6f63e71508c585ac8221f0d6a3c1afd3200ab2952cbd08421e10e9aa1f9e7c46"
+  },
+  "query_prefix": "Query: ",
+  "passage_prefix": "Document: ",
+  "block_separator": "\n\n",
+  "pooling": "last token",
+  "normalize": true,
+  "max_passage_tokens": 768
+}

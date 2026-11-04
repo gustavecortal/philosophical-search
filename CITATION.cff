@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+message: "Please cite philosophical search if you use it."
+type: software
+title: "philosophical search: semantic search over philosophy texts"
+abstract: >-
+  Semantic search over passages from philosophy books, encyclopedias and Wikipedia.
+authors:
+  - family-names: Cortal
+    given-names: Gustave
+repository-code: "https://github.com/gustavecortal/philosophical-search"
+url: "https://gustavecortal.com/philosophical-search/"
+license: MIT
+date-released: "2026-11-04"
+keywords:
+  - semantic search
+  - dense retrieval
+  - text embeddings
+  - binary quantization
+  - philosophy
+  - jina-embeddings-v5
+references:
+  - type: article
+    title: "jina-embeddings-v5-text: Task-Targeted Embedding Distillation"
+    authors:
+      - family-names: Akram
+        given-names: Mohammad Kalim
+      - family-names: Sturua
+        given-names: Saba
+      - family-names: Havriushenko
+        given-names: Nastia
+      - family-names: Herreros
+        given-names: Quentin
+      - family-names: Günther
+        given-names: Michael
+      - family-names: Werk
+        given-names: Maximilian
+      - family-names: Xiao
+        given-names: Han
+    year: 2026
+    url: "https://arxiv.org/abs/2602.15547"
