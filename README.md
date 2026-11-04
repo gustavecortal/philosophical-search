@@ -2,7 +2,9 @@
 
 [philosophical search](https://gustavecortal.com/philosophical-search/) is a semantic search over passages from philosophy books, encyclopedias and Wikipedia. The [live demo](https://gustavecortal.com/philosophical-search/) runs in the browser, and this repository builds its corpus, encoder and index, and searches the index from the command line as the page does.
 
-<!-- clip -->
+<p align="center">
+  <a href="https://gustavecortal.com/philosophical-search/"><img src="docs/demo.webp" width="720" alt="philosophical search: two questions typed in turn, each answered with three passages from different works"></a>
+</p>
 
 ## Quick start
 
