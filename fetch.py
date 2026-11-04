@@ -62,13 +62,13 @@ def standard_ebooks(doc, sources):
     data = json.dumps({'content.opf': opf, 'files': texts}, ensure_ascii=False).encode('utf-8')
     url = f'https://github.com/standardebooks/{doc["repo"]}/tree/{doc["commit"]}'
     source_url = f'https://standardebooks.org/ebooks/{doc["repo"].replace("_", "/")}'
-    return data, url, source_url, {}
+    return data, url, source_url, {'commit': doc['commit']}
 
 
 def gutenberg(doc, sources):
     # The generated HTML edition, named the same way for every ebook.
     url = f'{sources["gutenberg_mirror"]}/cache/epub/{doc["ebook"]}/pg{doc["ebook"]}-images.html'
-    return get(url), url, f'https://www.gutenberg.org/ebooks/{doc["ebook"]}', {}
+    return get(url), url, f'https://www.gutenberg.org/ebooks/{doc["ebook"]}', {'ebook': doc['ebook']}
 
 
 def wikipedia(doc, sources):

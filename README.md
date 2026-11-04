@@ -66,6 +66,8 @@ uv run extract.py && uv run passages.py && uv run model.py && uv run index.py
 
 Fetching every source takes about four hours, since the Stanford Encyclopedia asks for one request every five seconds, and downloads 1.1 GB. On the same processor, `extract.py` then takes 10 minutes and `passages.py` 3. `passages.py` prints a hash of the passages' text: the live index's 145,574 passages give `25d7812590c1`. A different hash means a source has changed since the index was built, which can happen to the Gutenberg mirror's files and to IEP entries, since neither is archived.
 
+The scripts keep four known faults of the live pipeline, so that they reproduce its passages, and comments in `extract.py` and `passages.py` describe them. Paragraphs inside list items in Standard Ebooks books appear twice. IEP paragraphs lose their notes and keep "[]" where each note was. In four SEP entries, a formula right after a heading joins the paragraph before it. Some sections are cut into one passage more than needed.
+
 `index.py` embeds the passages and their 511,084 paragraphs, about an hour and a half on an Intel Arc A770, and writes 850 MB. Run it on a GPU: PyTorch from PyPI uses NVIDIA GPUs on Linux and Apple's on macOS, and Intel GPUs need [PyTorch's XPU build](https://pytorch.org/get-started/locally/). An interrupted run resumes from the vectors saved in `data/embeddings/`. Embeddings computed on another device differ slightly from the live ones (a cosine above 0.9999998 on a CPU), so a few 8-bit values change by one and the index gets another version name. The signs of the 470 passages compared stayed the same.
 
 ## License

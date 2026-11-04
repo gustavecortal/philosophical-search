@@ -66,13 +66,16 @@ def embedder(data, batch_size):
     recipe = {k: ENCODER[k] for k in RECIPE}
     store = data / 'embeddings' / hashlib.sha256(json.dumps(recipe).encode('utf-8')).hexdigest()[:12]
     store.mkdir(parents=True, exist_ok=True)
-    known = {}
+    known, numbers = {}, [-1]
     for f in sorted(store.glob('chunk-*.npz')):
         saved = np.load(f)
         known.update(zip(saved['keys'].tolist(), saved['vectors']))
+        numbers.append(int(f.stem.split('-')[1]))
+    chunk = max(numbers)  # each new chunk is numbered past the highest, so none is overwritten
     key = lambda t: hashlib.sha256(t.encode('utf-8')).hexdigest()
 
     def embed(texts):
+        nonlocal chunk
         missing = list(dict.fromkeys(t for t in texts if key(t) not in known))
         print(f'{len(texts) - len(missing):,} of {len(texts):,} texts embedded before, {len(missing):,} to embed')
         for at in range(0, len(missing), CHUNK):
@@ -80,7 +83,8 @@ def embedder(data, batch_size):
             vectors = model.encode(part, prompt_name='document', batch_size=batch_size, normalize_embeddings=True,
                                    convert_to_numpy=True, show_progress_bar=True).astype(np.float32)
             keys = [key(t) for t in part]
-            np.savez(store / f'chunk-{len(list(store.glob("chunk-*.npz"))):05d}.npz', keys=np.array(keys), vectors=vectors)
+            chunk += 1
+            np.savez(store / f'chunk-{chunk:05d}.npz', keys=np.array(keys), vectors=vectors)
             known.update(zip(keys, vectors))
         return np.stack([known[key(t)] for t in texts])
     return embed
@@ -161,17 +165,19 @@ def main():
         digest.update(name.encode('utf-8') + b'\0' + hashlib.sha256(content).digest())
     version = digest.hexdigest()[:12]
 
-    # The new files, then the manifest that names them, then earlier versions removed: an interrupted run leaves the
-    # served copy whole.
+    # The new files, then the manifest that names them, then earlier versions removed. The model files are copied
+    # under temporary names and renamed only once all are copied, so an interrupted copy leaves the served model whole.
     out = args.out
     (out / version).mkdir(parents=True, exist_ok=True)
     for name, content in served.items():
         (out / version / name).write_bytes(content)
     (out / 'model').mkdir(exist_ok=True)
-    for p in model_files:
-        target = out / 'model' / p.name
-        if not target.exists() or sha256(target) != files[f'model/{p.name}']['sha256']:
-            shutil.copyfile(p, target)
+    changed = [p for p in model_files if not (out / 'model' / p.name).exists()
+               or sha256(out / 'model' / p.name) != files[f'model/{p.name}']['sha256']]
+    for p in changed:
+        shutil.copyfile(p, out / 'model' / (p.name + '.part'))
+    for p in changed:
+        (out / 'model' / (p.name + '.part')).replace(out / 'model' / p.name)
     manifest = {
         'version': version, 'count': len(passages), 'paragraph_count': len(paragraph_vectors),
         'dimensions': int(vectors.shape[1]),

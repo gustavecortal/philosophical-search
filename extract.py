@@ -144,7 +144,7 @@ def table_formula(table):
 
 
 def text_of(el, verse=False):
-    """The element's text with notes taken out; returns (text, note IDs)."""
+    """The element's text with notes taken out, and the notes' IDs."""
     notes = []
     marked = [a for a in el.find_all('a', href=True) if NOTE_LINK.match(a['href']) and len(a.get_text(strip=True)) <= 6]
     for a in el.select('a[epub\\:type~=noteref], a[href*="notes.html"]') + marked:
@@ -187,6 +187,16 @@ def heading_text(section):
     return None
 
 
+def snapshot(doc, record):
+    """The document's pin in sources.json, refused when fetch.py recorded another one for the downloaded file."""
+    pin = {k: doc[k] for k in ('commit', 'revision', 'edition', 'ebook') if k in doc}
+    for k, v in pin.items():
+        if k in record and str(record[k]) != str(v):
+            raise SystemExit(f'{doc["document_id"]}: {record["file"]} was fetched at {k} {record[k]}, but sources.json '
+                             f'pins {v}. Delete the file and run fetch.py again.')
+    return pin
+
+
 def reading_url(doc, record):
     """The page holding the document's whole text, where a link can scroll to a passage: Standard Ebooks'
     single-page edition and Gutenberg's HTML file rather than their catalogue pages."""
@@ -207,7 +217,7 @@ def standard_ebooks(doc, raw, out):
         if name in exclude:
             continue
         body = BeautifulSoup(xhtml, 'html.parser').body
-        if name == 'endnotes.xhtml':  # comes last; one file can serve several works
+        if name == 'endnotes.xhtml':  # comes last, and one file can serve several works
             cited = {n for b in out.items for n in b.get('notes', [])}
             for li in body.select('li[id^="note-"]'):
                 if li.get('id') not in cited:
@@ -230,6 +240,8 @@ def standard_ebooks(doc, raw, out):
                 continue
             if el.name == 'li' and el.find_parent('li'):
                 continue
+            # A known fault, kept so that the blocks match the live index: a <p> inside an <li> is emitted twice, in
+            # the item's block and in its own (2,091 such pairs in the corpus).
             section = [t for t in (heading_text(a) for a in reversed(ancestors)
                                    if a.name in ('section', 'article')) if t]
             url = next((f'{single_page}#{a["id"]}' for a in ancestors if a.name in ('section', 'article') and a.get('id')), None)
@@ -317,7 +329,7 @@ def gutenberg(doc, raw, out):
 
 
 def bible(rule, soup, out):
-    """One block per verse, under its chapter; continuation lines join their verse."""
+    """One block per verse, under its chapter. Continuation lines join their verse."""
     verses = []
     for line in soup.body.get_text().splitlines():
         m = re.match(r'(\d{3}):(\d{3}) (.*)', line.strip())
@@ -401,8 +413,13 @@ def sep(doc, raw, out):
     def append(formula):
         # A displayed formula (\[ ... \]) or table sits between paragraphs and completes the one before it, so it
         # joins that block on a line of its own. A block of its own would renumber every later block.
-        if formula:
-            out.items[-1]['text'] += '\n' + formula
+        if not formula:
+            return
+        if not out.items:
+            raise SystemExit(f'{doc["document_id"]}: a formula or table before the first block')
+        # A known fault, kept so that the blocks match the live index: a formula or table right after a heading joins
+        # the last block of the section before (9 formulas in 4 entries).
+        out.items[-1]['text'] += '\n' + formula
 
     for el in soup.find(id='main-text').children:
         if isinstance(el, NavigableString):
@@ -447,15 +464,20 @@ def iep(doc, raw, out):
     soup = BeautifulSoup(html, 'html.parser')
     # The author's name is the first line after the last "Author Information" (spelled several ways, as a heading
     # or a paragraph), then an email, an institution and a country.
-    byline = html[[m.start() for m in IEP_AUTHOR.finditer(html)][-1]:]
+    starts = [m.start() for m in IEP_AUTHOR.finditer(html)]
+    byline = html[starts[-1]:] if starts else ''
     lines = [clean(BeautifulSoup(line, 'html.parser').get_text()) for line in re.split(r'<br\s*/?>|</p>|</div>', byline)]
     lines = [line for line in lines if line]
-    first = IEP_AUTHOR.sub('', lines[0]).strip(' :') or lines[1]
+    first = next(filter(None, [IEP_AUTHOR.sub('', lines[0]).strip(' :'), *lines[1:2]]), None) if lines else None
+    if not first:
+        raise SystemExit(f'{doc["document_id"]}: no author name')
     author = 'Anonymous' if 'anonymous' in first.lower() else first
     section, contents = [], None
     # The outermost blocks: unclosed tags in some entries nest the rest of the entry inside an element.
     kinds = ['h1', 'h2', 'h3', 'h4', 'p', 'blockquote', 'ul', 'ol']
     for el in [el for el in soup.find_all(kinds) if not el.find_parent(kinds)]:
+        # A known fault, kept so that the blocks match the live index: the text_of(el) calls here take the note links
+        # out before the paragraph branch reads them, so a paragraph keeps "[]" where a note was and loses its notes.
         title = text_of(el)[0] if el.name in ('h2', 'h3', 'h4') else None
         if IEP_AUTHOR.match(text_of(el)[0]):
             break
@@ -477,7 +499,6 @@ def iep(doc, raw, out):
         elif el.name in ('ul', 'ol'):
             for li in el.find_all('li', recursive=False):
                 out.add('li', section, text_of(li)[0])
-    assert author, f'{doc["document_id"]}: no author name'
     return {'author': author, 'excluded': ['the table of contents, the bibliography and the author information']}
 
 
@@ -510,7 +531,7 @@ def main():
             **({'published': info['published']} if 'published' in info else {}),
             'source_url': record['source_url'],
             'reading_url': reading_url(doc, record),
-            'snapshot': {k: doc[k] for k in ('commit', 'revision', 'edition', 'ebook') if k in doc},
+            'snapshot': snapshot(doc, record),
             'retrieved': record['retrieved'],
             'raw_sha256': record['raw_sha256'],
             'content_sha256': hashlib.sha256(content.encode('utf-8')).hexdigest(),

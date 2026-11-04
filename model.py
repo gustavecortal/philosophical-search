@@ -28,11 +28,9 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-import onnxruntime as ort
 from onnx import TensorProto, helper, numpy_helper
-from tokenizers import Tokenizer
 
-from common import ENCODER, HERE, pinned, sha256, tokenizer
+from common import ENCODER, HERE, pinned, query_encoder, sha256, tokenizer
 
 GRAPH = 'model_q4_web.onnx'
 EMBEDDING = ('model_embed_tokens_weight_quant', 'model_embed_tokens_weight_scales', 'model_embed_tokens_weight_zp')
@@ -132,15 +130,10 @@ def trim(model, spec, old):
     return out
 
 
-def vectors(path, tok, texts):
-    """Each text's vector by the web page's recipe: one input at a time, the last token's hidden state, normalized."""
-    session = ort.InferenceSession(str(path), providers=['CPUExecutionProvider'])
-    rows = []
-    for text in texts:
-        ids = np.array([tok.encode(text).ids], dtype=np.int64)
-        [hidden] = session.run(['last_hidden_state'], {'input_ids': ids, 'attention_mask': np.ones_like(ids)})
-        rows.append(hidden[0, -1] / np.linalg.norm(hidden[0, -1]))
-    return np.array(rows)
+def vectors(graph, tokenizer_path, texts):
+    """Each text's vector by the web page's recipe."""
+    encode = query_encoder(graph, tokenizer_path)
+    return np.array([encode(t) for t in texts])
 
 
 def main():
@@ -165,14 +158,16 @@ def main():
               location=GRAPH + '_data', size_threshold=1024)
 
     texts = [ENCODER['query_prefix'] + q for q in QUESTIONS]
-    original, trimmed = tokenizer(tokenizer_path), Tokenizer.from_file(str(args.out / 'tokenizer.json'))
+    original, trimmed = tokenizer(tokenizer_path), tokenizer(args.out / 'tokenizer.json')
     same = sum([old[i] for i in trimmed.encode(t).ids] == original.encode(t).ids for t in texts)
-    cosine = np.sum(vectors(source, original, texts) * vectors(args.out / GRAPH, trimmed, texts), axis=1)
-    print(f'{same} of {len(texts)} questions tokenize as before; cosine to the original model at least {cosine.min():.7f}')
+    cosine = np.sum(vectors(source, tokenizer_path, texts) * vectors(args.out / GRAPH, args.out / 'tokenizer.json', texts),
+                    axis=1)
+    print(f'{same} of {len(texts)} questions tokenize as before. Their cosine to the original model is at least '
+          f'{cosine.min():.7f}')
     if same < len(texts) or cosine.min() < 0.99999:
         raise SystemExit('the new model differs from the original')
     identical = [name for name, digest in LIVE.items() if sha256(args.out / name) == digest]
-    print(f'wrote {args.out}; identical to the files the web page serves: {len(identical)} of {len(LIVE)}',
+    print(f'Wrote {args.out}. Identical to the files the web page serves: {len(identical)} of {len(LIVE)}',
           *sorted(set(LIVE) - set(identical)))
 
 

@@ -28,10 +28,8 @@ import urllib.parse
 from pathlib import Path
 
 import numpy as np
-import onnxruntime as ort
-from tokenizers import Tokenizer
 
-from common import HERE, sha256
+from common import HERE, query_encoder, sha256
 
 CANDIDATES = 100  # passages the first ranking passes on
 GROUP = 3  # results at first and per Show more
@@ -62,15 +60,7 @@ class Index:
         for path, file in encoder['files'].items():
             if sha256(self.folder / path) != file['sha256']:
                 raise SystemExit(f'{self.folder / path} does not match its hash in the manifest')
-        tok = Tokenizer.from_file(str(self.folder / encoder['tokenizer']))
-        session = ort.InferenceSession(str(self.folder / encoder['graph']), providers=['CPUExecutionProvider'])
-
-        def encode(text):  # one input at a time, so there is no padding
-            ids = np.array([tok.encode(text).ids], dtype=np.int64)
-            [hidden] = session.run(['last_hidden_state'], {'input_ids': ids, 'attention_mask': np.ones_like(ids)})
-            last = hidden[0, -1].astype(np.float64)
-            return (last / math.hypot(*last)).astype(np.float32)
-        return encode
+        return query_encoder(self.folder / encoder['graph'], self.folder / encoder['tokenizer'])
 
     def passage(self, i):
         """The passage's document (an index into documents), first and last block, top-level section and paragraph

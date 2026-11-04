@@ -29,7 +29,11 @@ MIN_WORDS = 30  # a heading-like line or a pointer to a supplement
 
 def parts(sizes, budget):
     """Cuts consecutive items of these sizes into groups, each at most `budget` long: as few groups as greedy cutting
-    allows, about equal in length. Returns each group's number of items."""
+    allows, about equal in length. Returns each group's number of items.
+
+    A known fault, kept so that the passages match the live index: the second pass can make more groups than greedy
+    cutting, since a group closed early at the target length can leave the next one too little room. parts([12, 18,
+    6, 7, 13, 19, 10], 25) gives 6 groups where greedy cutting gives 5."""
     n, size = 0, None
     for s in sizes:  # the fewest groups, cutting greedily
         if size is None or size + s > budget:
@@ -115,7 +119,7 @@ def main():
     # A hash of every passage's text, in order, to compare with the live index's (README.md).
     corpus = hashlib.sha256(json.dumps([p['text'] for p in passages], ensure_ascii=False).encode('utf-8'))
     print(f'{len(passages):,} passages ({sum(p["run"] == "reviewed" for p in passages)} reviewed) from '
-          f'{len({p["document_id"] for p in passages}):,} documents, text hash {corpus.hexdigest()[:12]}; '
+          f'{len({p["document_id"] for p in passages}):,} documents, text hash {corpus.hexdigest()[:12]}. '
           f'{oversized} blocks over the budget and {short} passages under {MIN_WORDS} words left out')
 
 
