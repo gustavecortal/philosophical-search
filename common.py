@@ -8,7 +8,7 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).parent
-ENCODER = json.loads((HERE / 'encoder.json').read_text(encoding='utf-8'))
+ENCODER = json.loads((HERE / 'encoder' / 'config.json').read_text(encoding='utf-8'))
 # A row of table.bin: the passage's document, first and last block, paragraph count, and the offset of its record in
 # text.bin.
 TABLE = [('document', '<u2'), ('start', '<u2'), ('end', '<u2'), ('paragraphs', '<u2'), ('text', '<u4')]
@@ -61,7 +61,7 @@ def sha256(path):
 
 def pinned(name, data):
     """A file of the encoder's repository at its pinned revision, downloaded once into <data>/models/ and checked
-    against its hash in encoder.json."""
+    against its hash in encoder/config.json."""
     path = Path(data) / 'models' / name
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,7 +71,7 @@ def pinned(name, data):
             shutil.copyfileobj(response, f)
         part.replace(path)
     if sha256(path) != ENCODER['files'][name]:
-        raise SystemExit(f'{path} does not match its hash in encoder.json: delete it to download it again')
+        raise SystemExit(f'{path} does not match its hash in encoder/config.json: delete it to download it again')
     return path
 
 

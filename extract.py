@@ -7,7 +7,7 @@ notes, each with the section path it belongs to.
 
 Reads the sources fetch.py downloaded into <data>/raw/ and writes <data>/documents.jsonl (one record per source:
 attribution, snapshot, hashes, what was left out as editorial) and <data>/blocks.jsonl. A block ID is
-"<document_id>:<position>". The reviewed passages (reviewed.jsonl) name their first and last block and the hash of
+"<document_id>:<position>". The reviewed passages (corpus/reviewed.jsonl) name their first and last block and the hash of
 their text, so passages.py notices if extraction changes.
 
 Text keeps the source's wording. clean() and text_of() make the only changes: Unicode NFC, runs of whitespace
@@ -185,11 +185,11 @@ def heading_text(section):
 
 
 def snapshot(doc, record):
-    """The document's pin in sources.json, refused when fetch.py recorded another one for the downloaded file."""
+    """The document's pin in corpus/sources.json, refused when fetch.py recorded another one for the downloaded file."""
     pin = {k: doc[k] for k in ('commit', 'revision', 'edition', 'ebook') if k in doc}
     for k, v in pin.items():
         if k in record and str(record[k]) != str(v):
-            raise SystemExit(f'{doc["document_id"]}: {record["file"]} was fetched at {k} {record[k]}, but sources.json '
+            raise SystemExit(f'{doc["document_id"]}: {record["file"]} was fetched at {k} {record[k]}, but corpus/sources.json '
                              f'pins {v}. Delete the file and run fetch.py again.')
     return pin
 
@@ -533,11 +533,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('--data', type=Path, default=HERE / 'data')
     args = parser.parse_args()
-    sources = json.loads((HERE / 'sources.json').read_text(encoding='utf-8'))
+    sources = json.loads((HERE / 'corpus' / 'sources.json').read_text(encoding='utf-8'))
     raw_dir = args.data / 'raw'
     fetched = json.loads((raw_dir / 'fetched.json').read_text(encoding='utf-8'))
     jobs = [(doc, fetched[doc['document_id']], raw_dir) for doc in sources['documents'] if doc['document_id'] in fetched]
-    # Documents are parsed in parallel and written in the order of sources.json. Text mode writes the platform's line
+    # Documents are parsed in parallel and written in the order of corpus/sources.json. Text mode writes the platform's line
     # endings, as write_jsonl does.
     with (multiprocessing.Pool() as pool, open(args.data / 'documents.jsonl', 'w', encoding='utf-8') as documents,
           open(args.data / 'blocks.jsonl', 'w', encoding='utf-8') as blocks):

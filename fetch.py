@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # ///
-"""Download each source in sources.json once into <data>/raw/ and record where it came from.
+"""Download each source in corpus/sources.json once into <data>/raw/ and record where it came from.
 
 Every source is pinned, so a later run fetches the same text:
 - Standard Ebooks: the book's repository at a commit. Its text files (those listed, or the reading order without the
@@ -124,7 +124,7 @@ def main():
     parser.add_argument('--data', type=Path, default=HERE / 'data')
     parser.add_argument('--only', nargs='+', metavar='ID', help='document IDs to fetch, or patterns such as "se-*"')
     args = parser.parse_args()
-    sources = json.loads((HERE / 'sources.json').read_text(encoding='utf-8'))
+    sources = json.loads((HERE / 'corpus' / 'sources.json').read_text(encoding='utf-8'))
     raw = args.data / 'raw'
     raw.mkdir(parents=True, exist_ok=True)
     record_path = raw / 'fetched.json'

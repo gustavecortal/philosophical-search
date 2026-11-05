@@ -4,7 +4,7 @@
 # ///
 """Embed the passages and write the search index the web page and query.py read.
 
-Each passage of <data>/passages.jsonl is embedded, and each of its paragraphs alone, with the encoder in encoder.json
+Each passage of <data>/passages.jsonl is embedded, and each of its paragraphs alone, with the encoder in encoder/config.json
 through Sentence Transformers in float32, on the GPU when PyTorch finds one. Vectors are kept by text in
 <data>/embeddings/, so an interrupted or repeated run embeds only new text.
 
@@ -55,7 +55,7 @@ def embedder(data, device, batch_size):
     vectors are saved there in chunks, so an interrupted run keeps what it embedded."""
     model = SentenceTransformer(ENCODER['repo'], revision=ENCODER['revision'], trust_remote_code=True,
                                 device=device, model_kwargs={'dtype': torch.float32})
-    # The recipe recorded in encoder.json must be the one the model's configuration applies.
+    # The recipe recorded in encoder/config.json must be the one the model's configuration applies.
     assert model.prompts == {'query': ENCODER['query_prefix'], 'document': ENCODER['passage_prefix']}, model.prompts
     recipe = {k: ENCODER[k] for k in RECIPE}
     store = data / 'embeddings' / hashlib.sha256(json.dumps(recipe).encode('utf-8')).hexdigest()[:12]

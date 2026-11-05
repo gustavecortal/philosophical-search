@@ -11,7 +11,7 @@ Two changes, neither of which changes a vector:
   packed zero points, split each byte into two 4-bit values (low nibble first), then (value - zero point) * scale
   per block of 32.
 - The tokenizer's 128,256 tokens cover many languages, and the embedding table is a third of the file. Only the
-  tokens in kept-tokens.txt stay: those seen in the corpus and in samples of English and French Wikipedia, the byte
+  tokens in encoder/kept-tokens.txt stay: those seen in the corpus and in samples of English and French Wikipedia, the byte
   tokens, the special tokens and every token the merges pass through to build a kept one. A text whose tokens are
   all kept is tokenized exactly as before. The download drops from 155 to 106 MB.
 
@@ -148,9 +148,12 @@ def main():
 
     model = onnx.load(str(source))
     rewrite(model)
-    old = kept_tokens(HERE / 'kept-tokens.txt')
+    old = kept_tokens(HERE / 'encoder' / 'kept-tokens.txt')
     spec = trim(model, json.loads(tokenizer_path.read_text(encoding='utf-8')), old)
     args.out.mkdir(parents=True, exist_ok=True)
+    # onnx.save appends to an existing weights file, so a second run would write a larger, different one.
+    for name in (GRAPH, GRAPH + '_data'):
+        (args.out / name).unlink(missing_ok=True)
     (args.out / 'tokenizer.json').write_text(json.dumps(spec, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     (args.out / 'tokenizer_config.json').write_bytes(config.read_bytes())
     onnx.save(model, str(args.out / GRAPH), save_as_external_data=True, all_tensors_to_one_file=True,

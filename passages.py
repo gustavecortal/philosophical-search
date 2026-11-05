@@ -4,7 +4,7 @@
 # ///
 """Cut every document into the passages the search returns.
 
-The reviewed passages come first: reviewed.jsonl names each one's first and last block and the hash of its text,
+The reviewed passages come first: corpus/reviewed.jsonl names each one's first and last block and the hash of its text,
 which must match the blocks extract.py wrote. The rest of every text is cut without annotation. A passage is a run
 of consecutive blocks of one section, at most 768 tokens with the encoder's passage prefix, cut into parts of about
 equal length. A block over that budget alone, and a passage under MIN_WORDS words, are left out.
@@ -76,7 +76,7 @@ def main():
                 **({'url': chosen[0]['url']} if chosen[0].get('url') else {})}
 
     passages, reviewed = [], set()
-    for r in read_jsonl(HERE / 'reviewed.jsonl'):
+    for r in read_jsonl(HERE / 'corpus' / 'reviewed.jsonl'):
         if r['document_id'] not in blocks:  # a document not extracted
             continue
         p = passage(r['document_id'], place[r['start_block']], place[r['end_block']], 'reviewed')

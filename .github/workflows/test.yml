@@ -11,10 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3
-      # The encoder's files are pinned in encoder.json, so its hash keys the cache.
+      # The encoder's files are pinned in encoder/config.json, so its hash keys the cache.
       - uses: actions/cache@v6
         with:
           path: data/models
-          key: models-${{ hashFiles('encoder.json') }}
+          key: models-${{ hashFiles('encoder/config.json') }}
       - run: uv run test.py
       - run: uv run model.py
