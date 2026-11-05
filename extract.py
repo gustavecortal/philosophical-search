@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["beautifulsoup4>=4.13"]
+# dependencies = ["beautifulsoup4==4.15.0"]
 # ///
 """Split each downloaded source into ordered blocks: paragraphs, dialogue turns, quotations, verse, list items and
 notes, each with the section path it belongs to.

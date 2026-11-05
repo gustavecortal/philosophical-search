@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["numpy>=2", "onnxruntime>=1.20", "tokenizers>=0.22"]
+# dependencies = ["numpy>=2", "onnxruntime==1.31.1", "tokenizers==0.23.3"]
 # ///
 """Search an index index.py wrote, as the web page does, and print the passages it would show.
 

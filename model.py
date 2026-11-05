@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["numpy>=2", "onnx>=1.18", "onnxruntime>=1.20", "tokenizers>=0.22"]
+# dependencies = ["numpy>=2", "onnx==1.23.2", "onnxruntime==1.31.1", "tokenizers==0.23.3"]
 # ///
 """Make the query encoder the web page runs: Jina's 4-bit ONNX file, made to run on ONNX Runtime Web's WebAssembly
 build, with its vocabulary cut to the tokens English and French text use.

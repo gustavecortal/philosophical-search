@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["numpy>=2", "sentence-transformers>=6.2", "torch>=2.8"]
+# dependencies = ["numpy>=2", "sentence-transformers==6.2.0", "transformers==5.22.1", "torch>=2.8"]
 # ///
 """Embed the passages and write the search index the web page and query.py read.
 

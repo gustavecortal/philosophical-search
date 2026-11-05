@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["tokenizers>=0.22"]
+# dependencies = ["tokenizers==0.23.3"]
 # ///
 """Cut every document into the passages the search returns.
 
