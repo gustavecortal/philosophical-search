@@ -8,7 +8,7 @@
 
 ## Quick start
 
-With [uv](https://docs.astral.sh/uv/getting-started/installation/), build an index of three public-domain books and ask it a question:
+Build an index of three public-domain books and ask it a question:
 
 ```bash
 git clone https://github.com/gustavecortal/philosophical-search.git
