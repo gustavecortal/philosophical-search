@@ -32,14 +32,14 @@
     "sep": {
       "local": "yes",
       "training": "unknown",
-      "redistribution": "owner decision",
-      "note": "SEP's terms (https://plato.stanford.edu/info.html#terms) allow non-commercial download, search, indexing and links, and grant no public electronic distribution of entry text. The owner decided on 2026-10-30 to show passages with a link to their entry. Confirm before any public release."
+      "redistribution": "no",
+      "note": "SEP's terms (https://plato.stanford.edu/info.html#terms) allow non-commercial download, search, indexing and links, and grant no public electronic distribution of entry text. Entries are fetched to build the index, and this repository holds none of their text."
     },
     "iep": {
       "local": "yes",
       "training": "unknown",
-      "redistribution": "owner decision",
-      "note": "Copyright the Internet Encyclopedia of Philosophy and its authors; no licence for redistribution is published. The owner decided on 2026-11-03 to show passages with a link to their entry, as for SEP. Confirm before any public release."
+      "redistribution": "no",
+      "note": "Copyright the Internet Encyclopedia of Philosophy and its authors, who publish no licence for redistribution. Entries are fetched to build the index, and this repository holds none of their text."
     }
   },
   "documents": [

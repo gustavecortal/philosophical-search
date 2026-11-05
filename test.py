@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["numpy>=2", "onnxruntime>=1.20", "tokenizers>=0.22"]
+# dependencies = ["numpy>=2"]
 # ///
 """Checks the passage cutting, and query.py's search on a toy index against the web page's own code: the expected
 values below were computed by the page's JavaScript (worker.mjs, page.mjs and keyword.mjs) on the same toy data.
@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from common import int8_rows, sign_bits
 from passages import parts
 from query import arrange, best, keyword_ranker, link, rank, sign_scores
 
@@ -25,11 +26,8 @@ def toy_index(count=400, dimensions=64, documents=12):
     vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
     query = rng.normal(size=dimensions).astype(np.float32)
     query /= np.linalg.norm(query)
-    scales = np.abs(vectors).max(axis=1) / 127
-    rows = np.zeros((count, 4 + dimensions), np.uint8)
-    rows[:, :4] = scales.astype('<f4')[:, None].view(np.uint8)
-    rows[:, 4:] = np.round(vectors / scales[:, None]).astype(np.int8).view(np.uint8)
-    bits = np.packbits(vectors > 0, axis=1, bitorder='little')
+    rows = np.frombuffer(int8_rows(vectors), np.uint8).reshape(count, 4 + dimensions)
+    bits = np.frombuffer(sign_bits(vectors), np.uint8).reshape(count, dimensions // 8)
     document = rng.integers(0, documents, count)
     start = rng.integers(0, 60, count)
     end = start + rng.integers(0, 4, count)

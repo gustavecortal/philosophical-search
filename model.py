@@ -16,7 +16,7 @@ Two changes, neither of which changes a vector:
   all kept is tokenized exactly as before. The download drops from 155 to 106 MB.
 
 The result is checked against the original file on a few questions (same tokens, cosine above 0.99999), then
-compared with the files the web page serves.
+compared with the files the web page serves. The script exits with an error when either check fails.
 
     uv run model.py
 """
@@ -34,7 +34,7 @@ from common import ENCODER, HERE, pinned, query_encoder, sha256, tokenizer
 
 GRAPH = 'model_q4_web.onnx'
 EMBEDDING = ('model_embed_tokens_weight_quant', 'model_embed_tokens_weight_scales', 'model_embed_tokens_weight_zp')
-# The files https://gustavecortal.com/philosophical-search/ serves.
+# The files model.py writes, as https://gustavecortal.com/philosophical-search/ serves them.
 LIVE = {
     'model_q4_web.onnx': '7ab9e675c7e4fd8792fcf222b66b4d03228ca6231e8cb848a99de011ca6678fb',
     'model_q4_web.onnx_data': 'aa9815841fec6f8cf84f0ac91c9fdba6302e055a949cdc0fe6938cc19c8d2e76',
@@ -140,7 +140,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('--data', type=Path, default=HERE / 'data', help='where the original files are downloaded')
     parser.add_argument('--out', type=Path, default=HERE / 'data' / 'model')
-    parser.add_argument('--kept', type=Path, default=HERE / 'kept-tokens.txt')
     args = parser.parse_args()
     source = pinned('onnx/model_q4.onnx', args.data)
     pinned('onnx/model_q4.onnx_data', args.data)  # read by onnx.load beside the graph
@@ -149,7 +148,7 @@ def main():
 
     model = onnx.load(str(source))
     rewrite(model)
-    old = kept_tokens(args.kept)
+    old = kept_tokens(HERE / 'kept-tokens.txt')
     spec = trim(model, json.loads(tokenizer_path.read_text(encoding='utf-8')), old)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / 'tokenizer.json').write_text(json.dumps(spec, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
@@ -166,9 +165,10 @@ def main():
           f'{cosine.min():.7f}')
     if same < len(texts) or cosine.min() < 0.99999:
         raise SystemExit('the new model differs from the original')
-    identical = [name for name, digest in LIVE.items() if sha256(args.out / name) == digest]
-    print(f'Wrote {args.out}. Identical to the files the web page serves: {len(identical)} of {len(LIVE)}',
-          *sorted(set(LIVE) - set(identical)))
+    different = [name for name, digest in LIVE.items() if sha256(args.out / name) != digest]
+    print(f'Wrote {args.out}. Identical to the files the web page serves: {len(LIVE) - len(different)} of {len(LIVE)}')
+    if different:
+        raise SystemExit(f'different from the served files: {", ".join(different)}')
 
 
 if __name__ == '__main__':

@@ -4,18 +4,11 @@
 # ///
 """Search an index index.py wrote, as the web page does, and print the passages it would show.
 
-The question is encoded with the index's query encoder (the 4-bit model the page runs on WebGPU), with the
-recipe in its manifest: "Query: " before the question, the last token's vector, normalized. A first ranking scores
-every passage by its signs: the sum of the question's values, each with the sign of the passage's value. The best
-100 are ranked again by their int8 vectors. Passages overlapping a better-ranked one from the same document are left
-out, and each group of three takes the best remaining passages from different sections, at most two from one
-document. If the first result scores below 0.30 nothing is shown, and below 0.40 the results are said to match only
-loosely. Each passage is printed from its paragraph closest to the question, as the page previews it.
-
-The arithmetic follows the page's worker (rounding, integer sums, the order of ties), so both rank alike.
+README.md describes the method. The arithmetic follows the page's worker (rounding, integer sums, the order of ties),
+so both rank alike.
 
     uv run query.py "Can virtue be taught?"
-    uv run query.py --index path/to/site --groups 2 --whole "Is free will compatible with determinism?"
+    uv run query.py --index path/to/index --groups 2 --whole "Is free will compatible with determinism?"
 """
 
 import argparse
@@ -25,15 +18,18 @@ import re
 import sys
 import textwrap
 import urllib.parse
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
 
-from common import HERE, query_encoder, sha256
+from common import ENCODER, HERE, TABLE, query_encoder
 
 CANDIDATES = 100  # passages the first ranking passes on
 GROUP = 3  # results at first and per Show more
-NO_MATCH, LOOSE = 0.30, 0.40  # thresholds on the first result's score, from 60 judged evaluation questions
+# Thresholds on the first result's score, set on 60 judged evaluation questions (README.md): below NO_MATCH nothing
+# is shown, below LOOSE the results are said to match only loosely.
+NO_MATCH, LOOSE = 0.30, 0.40
 SOURCES = {'sep': 'Stanford Encyclopedia of Philosophy', 'iep': 'Internet Encyclopedia of Philosophy'}
 
 
@@ -45,8 +41,7 @@ class Index:
         self.manifest = json.loads((self.folder / 'manifest.json').read_text(encoding='utf-8'))
         file = lambda key: self.folder / self.manifest[key]
         self.documents = json.loads(file('documents').read_text(encoding='utf-8'))
-        self.table = np.fromfile(file('table'), dtype=[('document', '<u2'), ('start', '<u2'), ('end', '<u2'),
-                                                       ('paragraphs', '<u2'), ('text', '<u4')])
+        self.table = np.fromfile(file('table'), dtype=TABLE)
         count, dimensions = self.manifest['count'], self.manifest['dimensions']
         self.bits = np.fromfile(file('bits'), dtype=np.uint8).reshape(count, dimensions // 8)
         self.vectors = np.memmap(file('vectors'), dtype=np.uint8, mode='r').reshape(-1, 4 + dimensions)
@@ -55,11 +50,12 @@ class Index:
         self.first_paragraph = count + np.concatenate([[0], np.cumsum(self.table['paragraphs'].astype(np.int64))])
 
     def encoder(self):
-        """encode(text): its normalized vector, as float32 values, from the model files checked against the manifest."""
+        """encode(text): its normalized vector, as float32 values. The model files are checked against the manifest
+        by size only: hashing 106 MB would slow every question, and model.py checks the hashes when it writes them."""
         encoder = self.manifest['encoder']
         for path, file in encoder['files'].items():
-            if sha256(self.folder / path) != file['sha256']:
-                raise SystemExit(f'{self.folder / path} does not match its hash in the manifest')
+            if (self.folder / path).stat().st_size != file['bytes']:
+                raise SystemExit(f'{self.folder / path} does not have the size the manifest gives')
         return query_encoder(self.folder / encoder['graph'], self.folder / encoder['tokenizer'])
 
     def passage(self, i):
@@ -179,18 +175,10 @@ def lead(index, query, i):
 def keyword_ranker(texts, k1=1.2, b=0.75):
     """BM25 over lowercased words, the page's ranking on a device that cannot run the model."""
     words = lambda text: re.findall(r'\w+', text.lower())
-    docs, lengths = [], []
-    for t in texts:
-        counts = {}
-        for w in words(t):
-            counts[w] = counts.get(w, 0) + 1
-        docs.append(counts)
-        lengths.append(sum(counts.values()))
+    docs = [Counter(words(t)) for t in texts]
+    lengths = [sum(d.values()) for d in docs]
     average = sum(lengths) / len(docs)
-    frequency = {}
-    for d in docs:
-        for w in d:
-            frequency[w] = frequency.get(w, 0) + 1
+    frequency = Counter(w for d in docs for w in d)
     idf = {w: math.log(1 + (len(docs) - n + 0.5) / (n + 0.5)) for w, n in frequency.items()}
 
     def rank(query):  # indices of the texts sharing a word with the query, best first
@@ -229,7 +217,7 @@ def source_line(document, record):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('question')
-    parser.add_argument('--index', type=Path, default=HERE / 'data' / 'site', help="index.py's output")
+    parser.add_argument('--index', type=Path, default=HERE / 'data' / 'index', help="index.py's output")
     parser.add_argument('--groups', type=int, default=1, help='groups of three to show (the page shows one, then '
                                                               'one more per Show more)')
     parser.add_argument('--whole', action='store_true', help='print each passage from its start')
@@ -255,7 +243,7 @@ def main():
         print(note)
     for n, i in enumerate(order, 1):
         document, record = index.documents[index.table['document'][i]], index.record(i)
-        paragraphs = record['text'].split('\n\n')
+        paragraphs = record['text'].split(ENCODER['block_separator'])
         first = 0 if args.whole or query is None or len(paragraphs) == 1 else lead(index, query, i)
         print(f'\n{n}. {source_line(document, record)}\n')
         for k, paragraph in enumerate(paragraphs[first:]):

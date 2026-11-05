@@ -6,11 +6,13 @@
 notes, each with the section path it belongs to.
 
 Reads the sources fetch.py downloaded into <data>/raw/ and writes <data>/documents.jsonl (one record per source:
-attribution, snapshot, hashes, permissions, what was left out as editorial) and <data>/blocks.jsonl. A block ID is
+attribution, snapshot, hashes, what was left out as editorial) and <data>/blocks.jsonl. A block ID is
 "<document_id>:<position>". The reviewed passages (reviewed.jsonl) name their first and last block and the hash of
 their text, so passages.py notices if extraction changes.
 
-Text keeps the source's wording. The only normalizations are those in NORMALIZATION.
+Text keeps the source's wording. clean() and text_of() make the only changes: Unicode NFC, runs of whitespace
+collapsed to one space except line breaks in verse, word joiners, zero-width spaces and soft hyphens removed, page
+numbers and note markers removed (note markers are kept as the block's note IDs).
 
     uv run extract.py
 """
@@ -18,6 +20,7 @@ Text keeps the source's wording. The only normalizations are those in NORMALIZAT
 import argparse
 import hashlib
 import json
+import multiprocessing
 import re
 import unicodedata
 import urllib.parse
@@ -25,17 +28,11 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup, NavigableString
 
-from common import HERE, write_jsonl
+from common import HERE, standard_ebooks_url
 
-EXTRACTION_VERSION = 5
 # A link to a note, by the names editions give their notes: Gutenberg's #linknote-11, #Footnote_1, #note_4, #f3 and
 # #ch01fn3; Wikipedia's #endnote_a. Links back from a note to the text stay: extraction reads them.
 NOTE_LINK = re.compile(r'#(linknote-|footnote_|note_|f\d|ch\d+fn\d+$|endnote_)', re.I)
-NORMALIZATION = (
-    'Unicode NFC; runs of whitespace collapsed to one space, except line breaks in verse; '
-    'word joiners, zero-width spaces and soft hyphens removed; page numbers and note markers '
-    'removed from the text, with note markers kept as the block\'s note IDs'
-)
 LINE_BREAK = ' '  # stands for <br> until whitespace is collapsed
 
 # Sections and files left out of a Standard Ebooks document because someone other than the
@@ -201,7 +198,7 @@ def reading_url(doc, record):
     """The page holding the document's whole text, where a link can scroll to a passage: Standard Ebooks'
     single-page edition and Gutenberg's HTML file rather than their catalogue pages."""
     if doc['source'] == 'standard_ebooks':
-        return f'https://standardebooks.org/ebooks/{doc["repo"].replace("_", "/")}/text/single-page'
+        return f'{standard_ebooks_url(doc["repo"])}/text/single-page'
     if doc['source'] == 'gutenberg':
         return f'https://www.gutenberg.org/cache/epub/{doc["ebook"]}/pg{doc["ebook"]}-images.html'
     return record['source_url']
@@ -502,51 +499,52 @@ def iep(doc, raw, out):
     return {'author': author, 'excluded': ['the table of contents, the bibliography and the author information']}
 
 
+WALKERS = {'standard_ebooks': standard_ebooks, 'gutenberg': gutenberg,
+           'wikipedia': wikipedia, 'wikisource': wikisource, 'sep': sep, 'iep': iep}
+
+
+def extract(job):
+    """A document's record and blocks, from its downloaded file."""
+    doc, record, raw_dir = job
+    raw = (raw_dir / record['file']).read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == record['raw_sha256'], doc['document_id']
+    out = Blocks(doc['document_id'])
+    info = WALKERS[doc['source']](doc, raw.decode('utf-8'), out)
+    document = {
+        **{k: doc[k] for k in ('document_id', 'work_id', 'title', 'source')},
+        'author': info.get('author') or doc['author'],
+        # tex_macros: the LaTeX macros an SEP entry defines for its formulas (its local.js), for rendering them.
+        **{k: doc[k] for k in ('translator', 'tex_macros') if k in doc},
+        'language': 'en',
+        **({'published': info['published']} if 'published' in info else {}),
+        'source_url': record['source_url'],
+        'reading_url': reading_url(doc, record),
+        'snapshot': snapshot(doc, record),
+        'retrieved': record['retrieved'],
+        'raw_sha256': record['raw_sha256'],
+        **({'edition_note': info['edition_note']} if 'edition_note' in info else {}),
+        'excluded': info['excluded'],
+        'blocks': len(out.items),
+    }
+    return document, out.items
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('--sources', type=Path, default=HERE / 'sources.json')
     parser.add_argument('--data', type=Path, default=HERE / 'data')
     args = parser.parse_args()
-    sources = json.loads(args.sources.read_text(encoding='utf-8'))
-    fetched = json.loads((args.data / 'raw' / 'fetched.json').read_text(encoding='utf-8'))
-    walkers = {'standard_ebooks': standard_ebooks, 'gutenberg': gutenberg,
-               'wikipedia': wikipedia, 'wikisource': wikisource, 'sep': sep, 'iep': iep}
-    documents, blocks = [], []
-    for doc in sources['documents']:
-        record = fetched.get(doc['document_id'])
-        if not record:  # not downloaded
-            continue
-        raw = (args.data / 'raw' / record['file']).read_bytes()
-        assert hashlib.sha256(raw).hexdigest() == record['raw_sha256'], doc['document_id']
-        out = Blocks(doc['document_id'])
-        info = walkers[doc['source']](doc, raw.decode('utf-8'), out)
-        content = '\n\n'.join(b['text'] for b in out.items)
-        permissions = sources['permissions'][doc['source']]
-        documents.append({
-            **{k: doc[k] for k in ('document_id', 'work_id', 'title', 'source')},
-            'author': info.get('author') or doc['author'],
-            # tex_macros: the LaTeX macros an SEP entry defines for its formulas (its local.js), for rendering them.
-            **{k: doc[k] for k in ('translator', 'editor', 'tex_macros') if k in doc},
-            'language': 'en',
-            **({'published': info['published']} if 'published' in info else {}),
-            'source_url': record['source_url'],
-            'reading_url': reading_url(doc, record),
-            'snapshot': snapshot(doc, record),
-            'retrieved': record['retrieved'],
-            'raw_sha256': record['raw_sha256'],
-            'content_sha256': hashlib.sha256(content.encode('utf-8')).hexdigest(),
-            'permissions': {k: permissions[k] for k in ('local', 'training', 'redistribution')},
-            **({'edition_note': info['edition_note']} if 'edition_note' in info else {}),
-            'excluded': info['excluded'],
-            'extraction_version': EXTRACTION_VERSION,
-            'normalization': NORMALIZATION,
-            'blocks': len(out.items),
-        })
-        blocks += out.items
-        print(f'{doc["document_id"]:32} {len(out.items):5d} blocks')
-
-    write_jsonl(args.data / 'documents.jsonl', documents)
-    write_jsonl(args.data / 'blocks.jsonl', blocks)
+    sources = json.loads((HERE / 'sources.json').read_text(encoding='utf-8'))
+    raw_dir = args.data / 'raw'
+    fetched = json.loads((raw_dir / 'fetched.json').read_text(encoding='utf-8'))
+    jobs = [(doc, fetched[doc['document_id']], raw_dir) for doc in sources['documents'] if doc['document_id'] in fetched]
+    # Documents are parsed in parallel and written in the order of sources.json. Text mode writes the platform's line
+    # endings, as write_jsonl does.
+    with (multiprocessing.Pool() as pool, open(args.data / 'documents.jsonl', 'w', encoding='utf-8') as documents,
+          open(args.data / 'blocks.jsonl', 'w', encoding='utf-8') as blocks):
+        for document, items in pool.imap(extract, jobs, chunksize=4):
+            documents.write(json.dumps(document, ensure_ascii=False) + '\n')
+            blocks.writelines(json.dumps(b, ensure_ascii=False) + '\n' for b in items)
+            print(f'{document["document_id"]:32} {len(items):5d} blocks')
 
 
 if __name__ == '__main__':

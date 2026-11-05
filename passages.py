@@ -12,7 +12,8 @@ equal length. A block over that budget alone, and a passage under MIN_WORDS word
 Reads <data>/documents.jsonl and <data>/blocks.jsonl, and writes <data>/passages.jsonl in the index's order (by
 document, then by place in it): the passage's document, first and last block as places among the document's blocks
 other than notes, section, text, run ("reviewed" or "auto") and, for a book from Standard Ebooks or Wikisource, the
-address of its section.
+address of its section. It also writes <data>/sections.json: for each document with passages, where each top-level
+section starts, as block places, which index.py records for the page.
 
     uv run passages.py
 """
@@ -22,7 +23,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from common import ENCODER, HERE, pinned, read_jsonl, tokenizer, write_jsonl
+from common import ENCODER, HERE, pinned, read_jsonl, section_without_title, tokenizer, write_jsonl
 
 MIN_WORDS = 30  # a heading-like line or a pointer to a supplement
 
@@ -53,7 +54,6 @@ def parts(sizes, budget):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('--data', type=Path, default=HERE / 'data')
-    parser.add_argument('--reviewed', type=Path, default=HERE / 'reviewed.jsonl')
     args = parser.parse_args()
     tok = tokenizer(pinned('tokenizer.json', args.data))
     budget, separator, prefix = ENCODER['max_passage_tokens'], ENCODER['block_separator'], ENCODER['passage_prefix']
@@ -70,16 +70,13 @@ def main():
 
     def passage(doc_id, start, end, run):
         chosen = blocks[doc_id][start:end + 1]
-        # A book's or page's own title often heads its section path, sometimes twice (the Meno inside its volume).
-        section = list(chosen[0]['section'])
-        while section[:1] == [titles[doc_id]]:
-            section.pop(0)
+        section = section_without_title(chosen[0]['section'], titles[doc_id])
         return {'document_id': doc_id, 'start': start, 'end': end, 'section': section,
                 'text': separator.join(b['text'] for b in chosen), 'run': run,
                 **({'url': chosen[0]['url']} if chosen[0].get('url') else {})}
 
     passages, reviewed = [], set()
-    for r in read_jsonl(args.reviewed):
+    for r in read_jsonl(HERE / 'reviewed.jsonl'):
         if r['document_id'] not in blocks:  # a document not extracted
             continue
         p = passage(r['document_id'], place[r['start_block']], place[r['end_block']], 'reviewed')
@@ -101,6 +98,7 @@ def main():
             if free:
                 current.append((n, c))
         runs.append(current)
+        cut = []
         for run in filter(None, runs):
             # Each block costs its tokens and a separator; the first saves one separator and adds the overhead.
             at = 0
@@ -110,12 +108,25 @@ def main():
                 if len(p['text'].split()) < MIN_WORDS:
                     short += 1
                     continue
-                assert len(tok.encode(prefix + p['text']).ids) <= budget, (doc_id, p['start'])
-                passages.append(p)
+                cut.append(p)
+        for p, c in zip(cut, tok.encode_batch([prefix + p['text'] for p in cut])):
+            assert len(c.ids) <= budget, (doc_id, p['start'])
+        passages += cut
 
     order = {d['document_id']: n for n, d in enumerate(documents)}
     passages.sort(key=lambda p: (order[p['document_id']], p['start']))
     write_jsonl(args.data / 'passages.jsonl', passages)
+    # Where each top-level section starts: the page takes passages from different sections first.
+    starts = {}
+    for doc_id in dict.fromkeys(p['document_id'] for p in passages):
+        starts[doc_id], last = [], None
+        for n, b in enumerate(blocks[doc_id]):
+            section = section_without_title(b['section'], titles[doc_id])
+            head = section[0] if section else ''
+            if n and head != last:
+                starts[doc_id].append(n)
+            last = head
+    (args.data / 'sections.json').write_text(json.dumps(starts, ensure_ascii=False), encoding='utf-8')
     # A hash of every passage's text, in order, to compare with the live index's (README.md).
     corpus = hashlib.sha256(json.dumps([p['text'] for p in passages], ensure_ascii=False).encode('utf-8'))
     print(f'{len(passages):,} passages ({sum(p["run"] == "reviewed" for p in passages)} reviewed) from '

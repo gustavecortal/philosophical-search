@@ -1,4 +1,5 @@
-"""What the pipeline's steps share: the encoder's recipe and pinned files, the query encoder, and JSON Lines."""
+"""What the pipeline's steps share: the encoder's recipe and pinned files, the query encoder, the index's formats,
+and JSON Lines."""
 
 import hashlib
 import json
@@ -8,6 +9,41 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 ENCODER = json.loads((HERE / 'encoder.json').read_text(encoding='utf-8'))
+# A row of table.bin: the passage's document, first and last block, paragraph count, and the offset of its record in
+# text.bin.
+TABLE = [('document', '<u2'), ('start', '<u2'), ('end', '<u2'), ('paragraphs', '<u2'), ('text', '<u4')]
+
+
+def standard_ebooks_url(repo):
+    """A Standard Ebooks book's page, from its repository's name: john-stuart-mill_on-liberty is
+    https://standardebooks.org/ebooks/john-stuart-mill/on-liberty."""
+    return f'https://standardebooks.org/ebooks/{repo.replace("_", "/")}'
+
+
+def section_without_title(section, title):
+    """The section path without the document's own title, which often heads it, sometimes twice (the Meno inside its
+    volume)."""
+    section = list(section)
+    while section[:1] == [title]:
+        section.pop(0)
+    return section
+
+
+def int8_rows(rows):
+    """Each row as its float32 scale then its int8 values (row = values * scale)."""
+    import numpy as np
+    scales = np.abs(rows).max(axis=1) / 127
+    quantized = np.round(rows / scales[:, None]).astype(np.int8)
+    out = np.zeros((len(rows), 4 + rows.shape[1]), np.uint8)
+    out[:, :4] = scales.astype('<f4')[:, None].view(np.uint8)
+    out[:, 4:] = quantized.view(np.uint8)
+    return out.tobytes()
+
+
+def sign_bits(rows):
+    """Each row's signs, one bit a dimension: dimension 8b+k is bit k of byte b."""
+    import numpy as np
+    return np.packbits(rows > 0, axis=1, bitorder='little').tobytes()
 
 
 def read_jsonl(path):
